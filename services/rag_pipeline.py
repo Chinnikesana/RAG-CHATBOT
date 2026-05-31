@@ -82,8 +82,9 @@ def build_messages(
     context_parts.append("\n=== RETRIEVED TRANSCRIPT EXCERPTS ===")
     if chunks:
         for idx, c in enumerate(chunks):
+            chunk_label = c.get("chunk_type", "transcript").upper()
             context_parts.append(
-                f"[Chunk {idx+1} | Video {c['video_id']} | {c['platform']} | Creator: {c['creator']}]\n"
+                f"[Chunk {idx+1} | {chunk_label} | Video {c['video_id']} | {c['platform']} | Creator: {c['creator']}]\n"
                 f"{c['text']}"
             )
     else:
@@ -109,7 +110,10 @@ def build_messages(
 
 def retrieve(session_id: str, question: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """Retrieve the most relevant transcript chunks from ChromaDB for this session."""
-    return retrieve_chunks(session_id, question, top_k=top_k)
+    print(f"[RAG] Retrieving top {top_k} chunks for session {session_id}, query: '{question}'")
+    chunks = retrieve_chunks(session_id, question, top_k=top_k)
+    print(f"[RAG] Retrieved {len(chunks)} chunks.")
+    return chunks
 
 
 
@@ -122,6 +126,7 @@ async def stream_answer(
     """
     client = _get_client()
 
+    print("[RAG] Calling Groq chat completion API (streaming)...")
     stream = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=messages,
@@ -129,6 +134,7 @@ async def stream_answer(
         temperature=0.4,
         max_tokens=1024,
     )
+    print("[RAG] Stream connected. Yielding tokens...")
 
     for chunk in stream:
         delta = chunk.choices[0].delta

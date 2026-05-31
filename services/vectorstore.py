@@ -1,12 +1,3 @@
-"""
-vectorstore.py
-ChromaDB persistent vector store with BGE-M3 embeddings.
-Uses LangChain only for:
-  - RecursiveCharacterTextSplitter  (chunking)
-  - HuggingFaceBgeEmbeddings        (BGE-M3 embedding model)
-All DB interactions are direct chromadb client calls for full control.
-"""
-
 import os
 from typing import List, Dict, Any
 
@@ -15,14 +6,10 @@ from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-HF_HOME = os.getenv("HF_HOME", "./hf_cache")
 
 CHUNK_SIZE    = 600
 CHUNK_OVERLAP = 100
-
-
 
 _embeddings: HuggingFaceBgeEmbeddings | None = None
 _collection: chromadb.Collection | None = None
@@ -50,7 +37,6 @@ def _get_collection() -> chromadb.Collection:
     return _collection
 
 
-
 _splitter = RecursiveCharacterTextSplitter(
     chunk_size=CHUNK_SIZE,
     chunk_overlap=CHUNK_OVERLAP,
@@ -58,45 +44,64 @@ _splitter = RecursiveCharacterTextSplitter(
 )
 
 
-#  Public API 
+def _build_metadata_text(metadata: Dict[str, Any]) -> str:
+    lines = [
+        f"Video {metadata['video_id']} ({metadata['platform'].capitalize()})",
+        f"Title: {metadata.get('title', 'N/A')}",
+        f"Creator: {metadata.get('creator', 'Unknown')}",
+        f"Followers: {metadata.get('followers', 0):,}",
+        f"Views: {metadata.get('views', 0):,}",
+        f"Likes: {metadata.get('likes', 0):,}",
+        f"Comments: {metadata.get('comments', 0):,}",
+        f"Engagement Rate: {metadata.get('engagement_rate', 0)}%",
+        f"Duration: {metadata.get('duration', 0)} seconds",
+        f"Upload Date: {metadata.get('upload_date', 'Unknown')}",
+    ]
+    if metadata.get("hashtags"):
+        lines.append(f"Hashtags: {', '.join(metadata['hashtags'][:15])}")
+    return "\n".join(lines)
+
+
 def chunk_and_store(
-    text: str,
+    transcript: str,
+    metadata: Dict[str, Any],
     session_id: str,
     video_id: str,
     platform: str,
     creator: str,
 ) -> int:
-    """
-    Splits transcript into chunks, embeds with BGE-M3, stores in ChromaDB.
-    Each chunk is tagged with session_id so retrieval is session-isolated.
-    Returns the number of chunks stored.
-    """
-    if not text or text.startswith("["):
-        return 0
+    meta_text = _build_metadata_text(metadata)
+    print(f"[VectorStore] Metadata chunk for Video {video_id}:\n{meta_text}")
 
-    chunks = _splitter.split_text(text)
-    if not chunks:
-        return 0
+    all_chunks = [meta_text]
+
+    if transcript and transcript.strip():
+        transcript_chunks = _splitter.split_text(transcript)
+        print(f"[VectorStore] Transcript split into {len(transcript_chunks)} chunks for Video {video_id}")
+        all_chunks.extend(transcript_chunks)
+    else:
+        print(f"[VectorStore] No transcript to chunk for Video {video_id}")
 
     emb_model = _get_embeddings()
     collection = _get_collection()
 
-    documents  = []
-    metadatas  = []
-    ids        = []
+    documents = []
+    metadatas = []
+    ids = []
 
-    for i, chunk in enumerate(chunks):
+    for i, chunk in enumerate(all_chunks):
         documents.append(chunk)
         metadatas.append({
             "session_id":  session_id,
             "video_id":    video_id,
             "chunk_index": i,
+            "chunk_type":  "metadata" if i == 0 else "transcript",
             "platform":    platform,
             "creator":     creator,
         })
         ids.append(f"{session_id}_{video_id}_{i}")
 
-    # embed_documents returns List[List[float]]
+    print(f"[VectorStore] Embedding {len(documents)} chunks for Video {video_id}...")
     embeddings_list = emb_model.embed_documents(documents)
 
     collection.upsert(
@@ -106,7 +111,8 @@ def chunk_and_store(
         ids=ids,
     )
 
-    return len(chunks)
+    print(f"[VectorStore] Stored {len(documents)} chunks for Video {video_id}")
+    return len(documents)
 
 
 def retrieve_chunks(
@@ -114,10 +120,6 @@ def retrieve_chunks(
     query: str,
     top_k: int = 5,
 ) -> List[Dict[str, Any]]:
-    """
-    Embeds the query and retrieves the top_k most relevant chunks
-    for the given session from ChromaDB.
-    """
     emb_model  = _get_embeddings()
     collection = _get_collection()
 
@@ -137,6 +139,7 @@ def retrieve_chunks(
             "text":        doc,
             "video_id":    meta["video_id"],
             "chunk_index": meta["chunk_index"],
+            "chunk_type":  meta.get("chunk_type", "transcript"),
             "platform":    meta["platform"],
             "creator":     meta["creator"],
         }

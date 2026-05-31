@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -18,7 +19,7 @@ app = FastAPI(
 # Allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, set to frontend URL
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,6 +27,14 @@ app.add_middleware(
 
 app.include_router(ingest_router, prefix="/api", tags=["ingest"])
 app.include_router(chat_router, prefix="/api", tags=["chat"])
+
+@app.get("/")
+async def root():
+    return {"message": "RAG Backend API is running"}
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
 
 @app.get("/health")
 async def health_check():
