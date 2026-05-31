@@ -1,8 +1,7 @@
-from pydantic import BaseModel, HttpUrl
-from typing import Optional, List, Any
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
 
-# ─── Ingest ───────────────────────────────────────────────────────────────────
 
 class IngestRequest(BaseModel):
     url_a: str
@@ -10,8 +9,8 @@ class IngestRequest(BaseModel):
 
 
 class VideoMetadata(BaseModel):
-    video_id: str          # "A" or "B"
-    platform: str          # "youtube" | "instagram"
+    video_id: str           # "A" or "B"
+    platform: str           # "youtube" | "insta"
     url: str
     title: str
     creator: str
@@ -21,9 +20,9 @@ class VideoMetadata(BaseModel):
     followers: int
     hashtags: List[str]
     upload_date: str
-    duration: int          # seconds
-    engagement_rate: float # (likes + comments) / views * 100
-    transcript_chunks: int # how many chunks stored
+    duration: int           # seconds
+    engagement_rate: float  # (likes + comments) / views * 100
+    transcript_chunks: int  # number of chunks stored in ChromaDB
 
 
 class IngestResponse(BaseModel):
@@ -32,10 +31,9 @@ class IngestResponse(BaseModel):
     video_b: Optional[VideoMetadata] = None
 
 
-# ─── Chat ─────────────────────────────────────────────────────────────────────
 
 class Message(BaseModel):
-    role: str   # "user" | "assistant"
+    role: str     # "user" | "assistant"
     content: str
 
 
@@ -43,11 +41,4 @@ class ChatRequest(BaseModel):
     session_id: str
     question: str
     messages: List[Message] = []
-
-
-class SourceChunk(BaseModel):
-    video_id: str
-    chunk_index: int
-    text: str
-    platform: str
-    creator: str
+    metadata: Optional[Dict[str, Any]] = None  # video metadata frontend
