@@ -25,4 +25,4 @@ isodate==0.6.1
 
 # Instagram
 yt-dlp
-instaloader
+instagrapi
