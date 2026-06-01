@@ -28,6 +28,7 @@ async def process_video(url: str, video_id: str, session_id: str) -> VideoMetada
     if platform == "youtube":
         meta_dict = await asyncio.to_thread(fetch_youtube_metadata, url, video_id)
     else:
+        print("********insta***************")
         meta_dict = await asyncio.to_thread(fetch_instagram_metadata, url, video_id)
     print(f"[Ingest] Metadata fetched for Video {video_id}")
 
@@ -37,7 +38,7 @@ async def process_video(url: str, video_id: str, session_id: str) -> VideoMetada
         if platform == "youtube":
             transcript = await asyncio.to_thread(fetch_youtube_transcript, url)
         else:
-            transcript = await asyncio.to_thread(fetch_instagram_transcript, url)
+            transcript = await asyncio.to_thread(fetch_instagram_transcript, meta_dict["video_url"])
         print(f"[Ingest] Transcript fetched for Video {video_id} ({len(transcript)} chars)")
     except Exception as e:
         print(f"[Ingest] Transcript failed for Video {video_id}: {e}")

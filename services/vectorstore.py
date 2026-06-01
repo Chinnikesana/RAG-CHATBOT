@@ -8,7 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 
-CHUNK_SIZE    = 600
+CHUNK_SIZE    = 800
 CHUNK_OVERLAP = 100
 
 _embeddings: HuggingFaceBgeEmbeddings | None = None

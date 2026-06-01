@@ -1,12 +1,4 @@
-"""
-rag_pipeline.py
-Flow:
-  question + history
-    → embed question in ChromaDB similarity search
-    → build prompt (system + metadata + chunks + history + question)
-    → stream Llama 3.1 via Groq API
-    → yield tokens
-"""
+
 
 import os
 from typing import List, Dict, Any, AsyncGenerator
@@ -35,7 +27,7 @@ SYSTEM_PROMPT = """You are an expert AI social media analyst helping creators un
 
 Your job is to answer questions about the provided social media videos.
 
-Rules:
+Rules here:
 1. Answer ONLY from the context provided (metadata + transcript excerpts).
 2. When comparing videos, reference them as "Video A" or "Video B".
 3. Always cite which video a transcript quote comes from.
@@ -51,14 +43,7 @@ def build_messages(
     metadata: Dict[str, Any] | None = None,
     history: List[Dict[str, str]] | None = None,
 ) -> List[Dict[str, str]]:
-    """
-    Assembles the full message list for the Groq chat completion API.
-
-    Structure:
-      [system: SYSTEM_PROMPT + metadata context + transcript chunks]
-      [assistant/user turns from history]
-      [user: current question]
-    """
+    
     context_parts = []
 
     if metadata:
@@ -79,7 +64,7 @@ def build_messages(
             if data.get("hashtags"):
                 context_parts.append(f"  Hashtags:        {', '.join(data['hashtags'][:10])}")
 
-    context_parts.append("\n=== RETRIEVED TRANSCRIPT EXCERPTS ===")
+    context_parts.append("\n******* RETRIEVED TRANSCRIPT EXCERPTS *************//")
     if chunks:
         for idx, c in enumerate(chunks):
             chunk_label = c.get("chunk_type", "transcript").upper()
@@ -88,11 +73,11 @@ def build_messages(
                 f"{c['text']}"
             )
     else:
-        context_parts.append("No transcript excerpts retrieved.")
+        context_parts.append("No transcript retrieved.")
 
     context_block = "\n".join(context_parts)
 
-    # ── Build messages list ──
+     
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{context_block}"}
     ]
