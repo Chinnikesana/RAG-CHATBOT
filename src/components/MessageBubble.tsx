@@ -1,8 +1,15 @@
+export interface Source {
+  video_id: string;
+  chunk_index: number;
+  platform: string;
+  creator: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  sources?: string[];
+  sources?: Source[];
   isStreaming?: boolean;
 }
 
@@ -43,9 +50,10 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
               <span
                 key={i}
                 className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-600 bg-violet-100 border border-violet-200 rounded-full px-2.5 py-0.5"
+                title={`Chunk ${source.chunk_index} from ${source.platform}`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-                {source}
+                Video {source.video_id}: {source.creator}
               </span>
             ))}
           </div>
