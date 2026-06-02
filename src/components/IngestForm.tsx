@@ -23,7 +23,7 @@ export default function IngestForm({ onSuccess, isIngesting, setIsIngesting }: I
     setError('');
     setIsIngesting(true);
     try {
-      const res = await fetch(`${API_BASE}/ingest`, {
+      const res = await fetch(`${API_BASE}/api/ingest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ youtube_url: youtubeUrl, instagram_url: instagramUrl }),

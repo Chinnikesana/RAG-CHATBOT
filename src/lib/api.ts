@@ -13,7 +13,7 @@ export const api = {
     const body: Record<string, string> = { url_a: urlA };
     if (urlB && urlB.trim()) body.url_b = urlB;
 
-    const res = await fetch(`${API_BASE}/ingest`, {
+    const res = await fetch(`${API_BASE}/api/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
