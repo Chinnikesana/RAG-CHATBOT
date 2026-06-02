@@ -2,8 +2,6 @@ fastapi==0.111.0
 uvicorn==0.30.1
 pydantic
 python-dotenv==1.0.1
-
-# LangChain — minimal usage (splitter + embeddings only)
 langchain==0.2.14
 langchain-core==0.2.33
 langchain-community==0.2.12
@@ -13,10 +11,8 @@ langchain-groq
 # Vector DB
 chromadb==0.5.4
 
-# Embeddings — BGE-M3 via sentence-transformers
 sentence-transformers==3.0.1
 
-# LLM + Whisper transcription via Groq
 groq==0.9.0
 
 # YouTube

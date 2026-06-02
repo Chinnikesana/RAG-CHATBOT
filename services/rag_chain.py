@@ -14,18 +14,17 @@ from services.vectorstore import retrieve_chunks
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
-# Global memory for metadata tool
 _metadata_store: Dict[str, Any] = {}
 
 def update_metadata_store(metadata: Dict[str, Any]):
-    """Update the global metadata store so the tool can access it."""
     global _metadata_store
     _metadata_store = metadata
 
-@tool
-def get_video_stats(video_id: str) -> str:
-    """Returns engagement rate, views, likes, and comments for Video A or B."""
-    data = _metadata_store.get(video_id.lower())
+from langchain_core.tools import StructuredTool
+
+def _get_video_stats_func(video_id: str) -> str:
+    clean_id = video_id.lower().replace("video", "").strip()
+    data = _metadata_store.get(clean_id)
     if not data:
         return f"No metadata found for Video {video_id}."
     
@@ -37,17 +36,21 @@ def get_video_stats(video_id: str) -> str:
         f"Engagement Rate: {data.get('engagement_rate', 0)}%"
     )
 
+get_video_stats = StructuredTool.from_function(
+    func=_get_video_stats_func,
+    name="get_video_stats",
+    description="Returns engagement rate, views, likes, and comments for Video A or B. Use this to lookup stats."
+)
+
 def get_llm():
     return ChatGroq(
         api_key=GROQ_API_KEY,
         model=GROQ_MODEL,
         temperature=0.4,
-        max_tokens=1024,
-        streaming=True
+        max_tokens=1024
     )
 
 def retrieve(session_id: str, question: str, top_k: int = 5) -> List[Dict[str, Any]]:
-    """Retrieve the most relevant transcript chunks from ChromaDB for this session."""
     print(f"[RAG] Retrieving top {top_k} chunks for session {session_id}, query: '{question}'")
     chunks = retrieve_chunks(session_id, question, top_k=top_k)
     print(f"[RAG] Retrieved {len(chunks)} chunks.")
@@ -60,10 +63,8 @@ async def stream_answer(
     history: List[Dict[str, str]]
 ) -> AsyncGenerator[str, None]:
     
-    # Update the metadata store for our tool
     update_metadata_store(metadata)
     
-    # Format chunks for context
     context_parts = ["=== RETRIEVED TRANSCRIPT EXCERPTS ==="]
     if chunks:
         for idx, c in enumerate(chunks):
@@ -76,7 +77,6 @@ async def stream_answer(
         context_parts.append("No transcript retrieved.")
     context_block = "\n".join(context_parts)
 
-    # Convert history dicts to LangChain Message objects
     chat_history = []
     for msg in history:
         if msg["role"] == "user":
@@ -102,19 +102,17 @@ Context:
         ("system", system_msg),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{question}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
 
     tools = [get_video_stats]
     llm = get_llm()
     
-    # We create a tool-calling agent to genuinely orchestrate
     agent = create_tool_calling_agent(llm, tools, prompt)
     agent_executor = AgentExecutor(agent=agent, tools=tools)
 
     print("[RAG] Calling LangChain AgentExecutor (streaming)...")
     
-    # We use astream_events to stream tokens from the LLM directly, 
-    # even when it's wrapped in an AgentExecutor.
     async for event in agent_executor.astream_events(
         {
             "question": question, 

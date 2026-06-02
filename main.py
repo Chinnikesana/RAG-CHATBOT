@@ -4,7 +4,7 @@ from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-# Load env vars before importing routers that rely on them
+# Load env vars 
 load_dotenv()
 
 from api.ingest import router as ingest_router
@@ -19,7 +19,7 @@ app = FastAPI(
 # Allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174","https://rag-chatbot-1-cumn.onrender.com/"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
