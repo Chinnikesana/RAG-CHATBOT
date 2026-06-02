@@ -1,6 +1,6 @@
 fastapi==0.111.0
 uvicorn==0.30.1
-pydantic==2.7.4
+pydantic
 python-dotenv==1.0.1
 
 # LangChain — minimal usage (splitter + embeddings only)
@@ -26,4 +26,5 @@ isodate==0.6.1
 
 # Instagram
 yt-dlp
-instagrapi
+instagrapi>=2.0.0
+# instagrapi>=2.0.0
