@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from models.schemas import ChatRequest
-from services.rag_pipeline import retrieve, build_messages, stream_answer
+from services.rag_chain import retrieve, stream_answer
 
 
 router = APIRouter()
@@ -17,20 +17,12 @@ async def sse_generator(req: ChatRequest):
     history = [{"role": m.role, "content": m.content} for m in req.messages]
 
     chunks = retrieve(req.session_id, req.question, top_k=5)
-
     metadata = req.metadata or {}
 
-    messages = build_messages(
-        question=req.question,
-        chunks=chunks,
-        metadata=metadata,
-        history=history,
-    )
-
-    print(f"[Chat] Built prompt with {len(messages)} messages, streaming response...")
+    print(f"[Chat] Streaming response via LangChain Orchestrator...")
 
     token_count = 0
-    async for token in stream_answer(messages):
+    async for token in stream_answer(req.question, chunks, metadata, history):
         token_count += 1
         yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 

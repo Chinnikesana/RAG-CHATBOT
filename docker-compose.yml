@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  backend:
+    build: .
+    container_name: rag-chatbot-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist ChromaDB between restarts — dont lose embeddings
+      - ./chroma_db:/app/chroma_db
+      # Persist BGE-M3 model — dont re-download on every restart (2.3GB)
+      - ./hf_cache:/app/hf_cache
+      # Persist Instagram session — dont re-login every restart
+      - ./ig_session.json:/app/ig_session.json
+    restart: unless-stopped

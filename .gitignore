@@ -2,3 +2,4 @@
 venv
 chroma_db/
 hf_cache/
+ig_session.json
