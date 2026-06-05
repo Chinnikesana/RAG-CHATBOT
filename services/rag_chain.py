@@ -1,54 +1,41 @@
 import os
 from typing import List, Dict, Any, AsyncGenerator
-import json
 
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from services.vectorstore import retrieve_chunks
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
-_metadata_store: Dict[str, Any] = {}
+_llm: ChatGroq | None = None
 
-def update_metadata_store(metadata: Dict[str, Any]):
-    global _metadata_store
-    _metadata_store = metadata
 
-from langchain_core.tools import StructuredTool
-
-def _get_video_stats_func(video_id: str) -> str:
-    clean_id = video_id.lower().replace("video", "").strip()
-    data = _metadata_store.get(clean_id)
-    if not data:
-        return f"No metadata found for Video {video_id}."
-    
-    return (
-        f"Stats for Video {video_id.upper()}:\n"
-        f"Views: {data.get('views', 0):,}\n"
-        f"Likes: {data.get('likes', 0):,}\n"
-        f"Comments: {data.get('comments', 0):,}\n"
-        f"Engagement Rate: {data.get('engagement_rate', 0)}%"
-    )
-
-get_video_stats = StructuredTool.from_function(
-    func=_get_video_stats_func,
-    name="get_video_stats",
-    description="Returns engagement rate, views, likes, and comments for Video A or B. Use this to lookup stats."
-)
-
-def get_llm():
-    return ChatGroq(
+def get_llm() -> ChatGroq:
+    global _llm
+    if _llm is not None:
+        return _llm
+    kwargs: Dict[str, Any] = dict(
         api_key=GROQ_API_KEY,
         model=GROQ_MODEL,
         temperature=0.4,
-        max_tokens=1024
+        streaming=True,
     )
+    # max_tokens renamed to max_completion_tokens in langchain-groq >= 0.2
+    try:
+        import langchain_groq as lg
+        ver = tuple(int(x) for x in getattr(lg, "__version__", "0.1.0").split(".")[:2])
+        if ver >= (0, 2):
+            kwargs["max_completion_tokens"] = 1024
+        else:
+            kwargs["max_tokens"] = 1024
+    except Exception:
+        pass
+    _llm = ChatGroq(**kwargs)
+    return _llm
+
 
 def retrieve(session_id: str, question: str, top_k: int = 5) -> List[Dict[str, Any]]:
     print(f"[RAG] Retrieving top {top_k} chunks for session {session_id}, query: '{question}'")
@@ -56,75 +43,97 @@ def retrieve(session_id: str, question: str, top_k: int = 5) -> List[Dict[str, A
     print(f"[RAG] Retrieved {len(chunks)} chunks.")
     return chunks
 
-async def stream_answer(
-    question: str,
-    chunks: List[Dict[str, Any]],
-    metadata: Dict[str, Any],
-    history: List[Dict[str, str]]
-) -> AsyncGenerator[str, None]:
-    
-    update_metadata_store(metadata)
-    
-    context_parts = ["=== RETRIEVED TRANSCRIPT EXCERPTS ==="]
-    if chunks:
-        for idx, c in enumerate(chunks):
-            chunk_label = c.get("chunk_type", "transcript").upper()
-            context_parts.append(
-                f"[Chunk {idx+1} | {chunk_label} | Video {c['video_id']} | {c['platform']} | Creator: {c['creator']}]\n"
-                f"{c['text']}"
-            )
-    else:
-        context_parts.append("No transcript retrieved.")
-    context_block = "\n".join(context_parts)
 
-    chat_history = []
-    for msg in history:
-        if msg["role"] == "user":
-            chat_history.append(HumanMessage(content=msg["content"]))
-        elif msg["role"] == "assistant":
-            chat_history.append(AIMessage(content=msg["content"]))
-
-    system_msg = """You are an expert AI social media analyst helping creators understand their content performance.
-Your job is to answer questions about the provided social media videos.
+SYSTEM_PROMPT = """\
+You are an expert AI social media analyst helping creators understand their content performance.
 
 Rules:
 1. Answer ONLY from the context provided (metadata + transcript excerpts).
 2. When comparing videos, reference them as "Video A" or "Video B".
 3. Always cite which video a transcript quote comes from.
 4. If data is missing or unavailable, say so honestly. Never hallucinate.
-5. For hook / content analysis, rely on the transcript excerpts.
-6. For engagement stats, use your tool to look them up.
+5. For engagement stats, use the metadata section of the context.
+6. For hook / content analysis, rely on the transcript excerpts.
+"""
 
-Context:
-{context}"""
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_msg),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{question}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
+def _build_context(chunks: List[Dict[str, Any]], metadata: Dict[str, Any]) -> str:
+    parts = []
 
-    tools = [get_video_stats]
+    # ── Metadata section ──────────────────────────────────────────────────────
+    if metadata:
+        parts.append("=== VIDEO METADATA ===")
+        for vid_key, data in metadata.items():
+            if not data:
+                continue
+            vid_label = vid_key.upper()
+            platform  = data.get("platform", "unknown").capitalize()
+            followers = data.get("followers", 0)
+            followers_str = (
+                "N/A (no public API)"
+                if data.get("platform") == "instagram" and followers == 0
+                else f"{followers:,}"
+            )
+            parts += [
+                f"\nVideo {vid_label} — {platform}",
+                f"  Title:           {data.get('title', 'N/A')}",
+                f"  Creator:         {data.get('creator', 'Unknown')}",
+                f"  Followers:       {followers_str}",
+                f"  Views:           {data.get('views', 0):,}",
+                f"  Likes:           {data.get('likes', 0):,}",
+                f"  Comments:        {data.get('comments', 0):,}",
+                f"  Engagement Rate: {data.get('engagement_rate', 0)}%",
+                f"  Duration:        {data.get('duration', 0)}s",
+                f"  Uploaded:        {data.get('upload_date', 'Unknown')}",
+            ]
+            if data.get("hashtags"):
+                parts.append(f"  Hashtags:        {', '.join(data['hashtags'][:10])}")
+
+    # ── Transcript chunks ─────────────────────────────────────────────────────
+    parts.append("\n=== RETRIEVED TRANSCRIPT EXCERPTS ===")
+    if chunks:
+        for idx, c in enumerate(chunks):
+            chunk_label = c.get("chunk_type", "transcript").upper()
+            parts.append(
+                f"[Chunk {idx+1} | {chunk_label} | Video {c['video_id']} "
+                f"| {c['platform']} | Creator: {c['creator']}]\n{c['text']}"
+            )
+    else:
+        parts.append("No transcript retrieved.")
+
+    return "\n".join(parts)
+
+
+async def stream_answer(
+    question: str,
+    chunks: List[Dict[str, Any]],
+    metadata: Dict[str, Any],
+    history: List[Dict[str, str]],
+) -> AsyncGenerator[str, None]:
+    """
+    Streams tokens directly from ChatGroq — no AgentExecutor needed.
+    Works with langchain-groq 0.1.x through 1.x.
+    """
+    context = _build_context(chunks, metadata)
+
+    # Build message list
+    messages = [SystemMessage(content=f"{SYSTEM_PROMPT}\n\n{context}")]
+
+    for msg in history:
+        role    = msg.get("role", "")
+        content = msg.get("content", "")
+        if not content:
+            continue
+        if role == "user":
+            messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            messages.append(AIMessage(content=content))
+
+    messages.append(HumanMessage(content=question))
+
     llm = get_llm()
-    
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools)
+    print(f"[RAG] Streaming answer via ChatGroq ({GROQ_MODEL})...")
 
-    print("[RAG] Calling LangChain AgentExecutor (streaming)...")
-    
-    async for event in agent_executor.astream_events(
-        {
-            "question": question, 
-            "chat_history": chat_history,
-            "context": context_block
-        },
-        version="v1"
-    ):
-        kind = event["event"]
-        if kind == "on_chat_model_stream":
-            chunk = event["data"]["chunk"]
-            if chunk.content:
-                yield chunk.content
-        elif kind == "on_tool_start":
-            print(f"[RAG] LangChain Orchestrator called tool: {event['name']}")
+    async for chunk in llm.astream(messages):
+        if chunk.content:
+            yield chunk.content

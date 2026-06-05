@@ -2,7 +2,7 @@ import os
 from typing import List, Dict, Any
 
 import chromadb
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
@@ -11,14 +11,14 @@ CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 CHUNK_SIZE    = 800
 CHUNK_OVERLAP = 100
 
-_embeddings: HuggingFaceBgeEmbeddings | None = None
+_embeddings: HuggingFaceEmbeddings | None = None
 _collection: chromadb.Collection | None = None
 
 
-def _get_embeddings() -> HuggingFaceBgeEmbeddings:
+def _get_embeddings() -> HuggingFaceEmbeddings:
     global _embeddings
     if _embeddings is None:
-        _embeddings = HuggingFaceBgeEmbeddings(
+        _embeddings = HuggingFaceEmbeddings(
             model_name="BAAI/bge-m3",
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
@@ -45,11 +45,19 @@ _splitter = RecursiveCharacterTextSplitter(
 
 
 def _build_metadata_text(metadata: Dict[str, Any]) -> str:
+    platform = metadata.get("platform", "")
+    followers = metadata.get("followers", 0)
+    # Show honest message when followers aren't available
+    followers_str = (
+        "N/A (no cookies configured)"
+        if platform == "instagram" and followers == 0
+        else f"{followers:,}"
+    )
     lines = [
         f"Video {metadata['video_id']} ({metadata['platform'].capitalize()})",
         f"Title: {metadata.get('title', 'N/A')}",
         f"Creator: {metadata.get('creator', 'Unknown')}",
-        f"Followers: {metadata.get('followers', 0):,}",
+        f"Followers: {followers_str}",
         f"Views: {metadata.get('views', 0):,}",
         f"Likes: {metadata.get('likes', 0):,}",
         f"Comments: {metadata.get('comments', 0):,}",

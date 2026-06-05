@@ -13,6 +13,6 @@ services:
       - ./chroma_db:/app/chroma_db
       # Persist BGE-M3 model — dont re-download on every restart (2.3GB)
       - ./hf_cache:/app/hf_cache
-      # Persist Instagram session — dont re-login every restart
-      - ./ig_session.json:/app/ig_session.json
+      # Instagram cookies exported from Edge browser (run export_ig_cookies.py)
+      - ./ig_cookies.txt:/app/ig_cookies.txt:ro
     restart: unless-stopped

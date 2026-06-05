@@ -1,0 +1,28 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ML model cache — downloaded at runtime, not needed in image
+hf_cache/
+
+# ChromaDB — mounted as a volume, not baked into image
+chroma_db/
+
+# Git
+.git/
+.gitignore
+
+# Dev
+.env
+*.log
+
+# Instagram session (no longer used)
+ig_session.json
